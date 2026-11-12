@@ -16,39 +16,48 @@ if (slider) {
   const dots = Array.from(slider.querySelectorAll(".banner-dots button"));
   const prev = slider.querySelector(".banner-arrow-prev");
   const next = slider.querySelector(".banner-arrow-next");
-  let activeIndex = 0;
-  let intervalId;
+  const images = slides.map((slide) => slide.querySelector("img"));
+  let requestedIndex = 0;
+  let requestId = 0;
+  let timerId;
 
-  const showSlide = (index) => {
-    activeIndex = (index + slides.length) % slides.length;
-    slides.forEach((slide, i) => slide.classList.toggle("is-active", i === activeIndex));
-    dots.forEach((dot, i) => dot.classList.toggle("is-active", i === activeIndex));
+  const prepareImage = (image) => {
+    if (image.dataset.src) {
+      if (image.dataset.srcset) image.srcset = image.dataset.srcset;
+      image.src = image.dataset.src;
+      delete image.dataset.src;
+      delete image.dataset.srcset;
+    }
+    return image.decode();
   };
 
-  const startSlider = () => {
-    window.clearInterval(intervalId);
-    intervalId = window.setInterval(() => showSlide(activeIndex + 1), 3000);
+  const showSlide = async (index) => {
+    window.clearTimeout(timerId);
+    requestedIndex = (index + slides.length) % slides.length;
+    const targetIndex = requestedIndex;
+    const currentRequest = ++requestId;
+    const ready = await prepareImage(images[targetIndex]).then(() => true, () => false);
+    if (currentRequest !== requestId) return;
+
+    // Keep the current slide visible until the requested image can be painted.
+    if (ready) {
+      slides.forEach((slide, i) => slide.classList.toggle("is-active", i === targetIndex));
+      dots.forEach((dot, i) => dot.classList.toggle("is-active", i === targetIndex));
+    }
+    timerId = window.setTimeout(() => showSlide(targetIndex + 1), 3000);
   };
 
-  prev?.addEventListener("click", () => {
-    showSlide(activeIndex - 1);
-    startSlider();
-  });
-
-  next?.addEventListener("click", () => {
-    showSlide(activeIndex + 1);
-    startSlider();
-  });
+  prev?.addEventListener("click", () => showSlide(requestedIndex - 1));
+  next?.addEventListener("click", () => showSlide(requestedIndex + 1));
 
   dots.forEach((dot, index) => {
-    dot.addEventListener("click", () => {
-      showSlide(index);
-      startSlider();
-    });
+    dot.addEventListener("click", () => showSlide(index));
   });
 
-  showSlide(0);
-  startSlider();
+  showSlide(0).then(() => {
+    // Let the first slide use the connection before warming the other two.
+    images.slice(1).forEach((image) => prepareImage(image).catch(() => {}));
+  });
 }
 
 const magnifiableFigures = Array.from(document.querySelectorAll(".product-details-section .visible-short-caption"));
